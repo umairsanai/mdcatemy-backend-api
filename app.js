@@ -1,6 +1,6 @@
 import express from "express";
 import morgan from "morgan";
-import {xss} from "express-xss-sanitizer";
+import { xss } from "express-xss-sanitizer";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import hpp from "hpp-clean";
