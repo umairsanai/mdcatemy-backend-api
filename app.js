@@ -11,16 +11,18 @@ import { errorMiddleware } from "./error.js";
 
 const app = express();
 
-// Body parsing
-app.use([express.json({limit: '10kb'}), 
-        express.urlencoded({extended: true, limit:'1kb'}),
-        cookieParser()]);
+// BODY PARSING
+app.set('query parser', 'extended');    
+app.use(express.json({limit: '10kb'}));
+app.use(cookieParser());
+app.use(express.urlencoded({extended: true, limit:'10kb'}));
 
-// Logging
+// LOGGING
 app.use(morgan("tiny"));
 
-// Security
-app.use([xss(), helmet(), hpp()]);
+// SECURITY
+// TODO: SQL INJECTION REMAINS
+app.use([xss(), helmet(), hpp({ whitelist: ['attempts'] })]);
 
 // Rate limiting
 app.use(rateLimit({
@@ -33,6 +35,7 @@ app.use(rateLimit({
     }
 }));
 
+// SECURITY
 app.use("/api/v1/users/", userRouter);
 app.use("/api/v1/mcqs/", mcqRouter);
 

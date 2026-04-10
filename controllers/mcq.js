@@ -30,11 +30,11 @@ export const generateQuiz = handleAsyncError(async (req, res, next) => {
     if (!hard) hard = 0;
 
     if (easy)
-        quiz.mcqs.easy = (await pool.query("SELECT question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id WHERE difficulty='Easy' ORDER BY RANDOM() LIMIT $1", [easy])).rows;
+        quiz.mcqs.easy = (await pool.query("SELECT mcq_id, question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id WHERE difficulty='Easy' ORDER BY RANDOM() LIMIT $1", [easy])).rows;
     if (medium)
-        quiz.mcqs.medium = (await pool.query("SELECT question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id WHERE difficulty='Medium' ORDER BY RANDOM() LIMIT $1", [medium])).rows;
+        quiz.mcqs.medium = (await pool.query("SELECT mcq_id, question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id WHERE difficulty='Medium' ORDER BY RANDOM() LIMIT $1", [medium])).rows;
     if (hard)
-        quiz.mcqs.hard = (await pool.query("SELECT question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id WHERE difficulty='Hard' ORDER BY RANDOM() LIMIT $1", [hard])).rows;
+        quiz.mcqs.hard = (await pool.query("SELECT mcq_id, question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id WHERE difficulty='Hard' ORDER BY RANDOM() LIMIT $1", [hard])).rows;
 
     quiz.count.easy = quiz.mcqs.easy.length;
     quiz.count.medium = quiz.mcqs.medium.length;
