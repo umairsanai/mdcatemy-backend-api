@@ -12,3 +12,9 @@ export function handleAsyncError(func) {
         func(req, res, next).catch(next);
     }
 }
+export function errorMiddleware(error, req, res, next) {
+    res.status(error.statusCode ?? 400).json({
+        status: error.status ?? "error",
+        error
+    });
+}

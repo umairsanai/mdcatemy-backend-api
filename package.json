@@ -5,8 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "set MODE=dev && node index.js",
-    "prod": "set MODE=prod && node index.js"
+    "dev": "set MODE=dev && nodemon index.js",
+    "prod": "set MODE=prod && nodemon index.js"
   },
   "author": "Umair Anwar",
   "license": "ISC",

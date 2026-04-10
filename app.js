@@ -1,4 +1,3 @@
-import path from "path";
 import express from "express";
 import morgan from "morgan";
 import {xss} from "express-xss-sanitizer";
@@ -7,6 +6,8 @@ import rateLimit from "express-rate-limit";
 import hpp from "hpp-clean";
 import helmet from "helmet";
 import userRouter from "./routes/userRouter.js";
+import mcqRouter from "./routes/mcqRouter.js";
+import { errorMiddleware } from "./error.js";
 
 const app = express();
 
@@ -33,8 +34,8 @@ app.use(rateLimit({
 }));
 
 app.use("/api/v1/users/", userRouter);
-app.use("/api/v1/mcqs/", userRouter);
+app.use("/api/v1/mcqs/", mcqRouter);
 
-
+app.use(errorMiddleware);
 
 export default app;

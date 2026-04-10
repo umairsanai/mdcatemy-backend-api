@@ -57,6 +57,7 @@ CREATE TABLE mcq_bank(
 CREATE TABLE bookmarks(
     student_id INT NOT NULL,
     mcq_id INT NOT NULL,
+    saved_date DATE NOT NULL DEFAULT CURRENT_DATE, 
 
     CONSTRAINT pkey_bookmarks PRIMARY KEY(student_id, mcq_id),
     CONSTRAINT fkey_bookmarks_mcqbank FOREIGN KEY(mcq_id) REFERENCES mcq_bank(mcq_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -76,6 +77,7 @@ CREATE TABLE attempted_mcqs(
     student_id INT NOT NULL,
     mcq_id INT NOT NULL,
     selected_option CHAR(1) NOT NULL,
+    saved_date DATE NOT NULL DEFAULT CURRENT_DATE, 
     -- What should happen when a user corrects the previously wronged mcq or vice versa? 
     CONSTRAINT pkey_attemptedmcqs PRIMARY KEY(student_id, mcq_id),
     CONSTRAINT fkey_attemptedmcqs_mcqbank FOREIGN KEY(mcq_id) REFERENCES mcq_bank(mcq_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -87,56 +89,9 @@ CREATE TABLE activity(
     student_id INT NOT NULL,
     attempt_count INT NOT NULL,
     correct_count INT NOT NULL,
+    streak INT NOT NULL DEFAULT 0,
     activity_date DATE NOT NULL DEFAULT CURRENT_DATE, 
     CONSTRAINT attempt_count_non_negative CHECK(attempt_count >= 0),
     CONSTRAINT correct_count_non_negative CHECK(correct_count >= 0),
     CONSTRAINT fkey_activity_student FOREIGN KEY(student_id) REFERENCES student(student_id) ON UPDATE CASCADE ON DELETE CASCADE
 );
-
-
--- QUERY FOR WEAK TOPICS
-SELECT topics.topic_name,
-       chapters.chapter_name,
-       subjects.subject_name,
-       ROUND(((
-            SELECT COUNT(*) 
-            FROM attempted_mcqs inner_attempted_mcqs
-            INNER JOIN mcq_bank inner_mcq_bank ON inner_mcq_bank.mcq_id=inner_attempted_mcqs.mcq_id 
-            WHERE inner_attempted_mcqs.student_id=1 AND inner_attempted_mcqs.selected_option=inner_mcq_bank.correct_option 
-                               AND inner_mcq_bank.topic_id=outer_mcq_bank.topic_id
-       )*100) /
-       (
-            SELECT COUNT(*) 
-            FROM attempted_mcqs inner_attempted_mcqs
-            INNER JOIN mcq_bank inner_mcq_bank ON inner_mcq_bank.mcq_id=inner_attempted_mcqs.mcq_id 
-            WHERE inner_attempted_mcqs.student_id=1 AND inner_mcq_bank.topic_id=outer_mcq_bank.topic_id
-       )) AS accuracy
-FROM attempted_mcqs outer_attempted_mcqs
-INNER JOIN mcq_bank outer_mcq_bank ON outer_mcq_bank.mcq_id=outer_attempted_mcqs.mcq_id
-INNER JOIN topics ON outer_mcq_bank.topic_id=topics.topic_id
-INNER JOIN chapters ON outer_mcq_bank.chapter_id=chapters.chapter_id
-INNER JOIN subjects ON outer_mcq_bank.subject_id=subjects.subject_id
-WHERE outer_attempted_mcqs.student_id=1
-GROUP BY outer_mcq_bank.topic_id, topic_name, chapter_name, subject_name
-ORDER BY accuracy ASC
-LIMIT 4;
-
--- Optimized:
-SELECT topics.topic_name,
-       chapters.chapter_name,
-       subjects.subject_name,
-       ROUND(SUM(
-            CASE
-                WHEN outer_attempted_mcqs.selected_option=outer_mcq_bank.correct_option THEN 1
-                ELSE 0
-            END)*100 /
-       (COUNT(*))) AS accuracy
-FROM attempted_mcqs outer_attempted_mcqs
-INNER JOIN mcq_bank outer_mcq_bank ON outer_mcq_bank.mcq_id=outer_attempted_mcqs.mcq_id
-INNER JOIN topics ON outer_mcq_bank.topic_id=topics.topic_id
-INNER JOIN chapters ON outer_mcq_bank.chapter_id=chapters.chapter_id
-INNER JOIN subjects ON outer_mcq_bank.subject_id=subjects.subject_id
-WHERE outer_attempted_mcqs.student_id=1
-GROUP BY outer_mcq_bank.topic_id, topic_name, chapter_name, subject_name
-ORDER BY accuracy ASC
-LIMIT 4;
