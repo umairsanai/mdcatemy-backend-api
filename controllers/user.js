@@ -1,5 +1,6 @@
 import pool from "../database.js";
 import { AppError, handleAsyncError } from "../error.js";
+import { isString } from "../helpers.js";
 
 const SAVED_MCQS_PER_PAGE = 10;
 const MILLISECONDS_IN_DAY = 86400000;
@@ -19,7 +20,7 @@ export const getDashboardStats = handleAsyncError(async (req, res, next) => {
         logical_reasoning: { attempt: 0, correct: 0 }
     };
     
-    let userResult = await pool.query(`SELECT student_id, name, email, streak FROM student WHERE student_id=$1`, [req.body.student_id]);
+    let userResult = await pool.query(`SELECT student_id, name, email, streak FROM student WHERE student_id=$1`, [req.user.student_id]);
     
     if (!userResult.rows.length)
         return next(new AppError("No Such User Exists", 404));
@@ -64,45 +65,87 @@ export const getDashboardStats = handleAsyncError(async (req, res, next) => {
     });
 });
 
-export const getSavedMCQs = handleAsyncError(async (req, res, next) => {
-    const page = +req.query.page;    
-    if (page <= 0 || !Number.isInteger(page)) 
-        return next("Incorrect Page", 400);
+const getMCQsForUser = async (req, res, next, query) => {
+    const page = +req.query.page;
+    const biology = req.query.biology ? +req.query.biology : 0;
+    const physics = req.query.physics ? +req.query.physics : 0;
+    const chemistry = req.query.chemistry ? +req.query.chemistry : 0;
+    const english = req.query.english ? +req.query.english : 0;
+    const logical_reasoning = req.query.logical_reasoning ? +req.query.logical_reasoning : 0;
+    let search = req.query.search ?? "";
+    let isError = false;
+    const subjects = ["Biology", "Physics", "Chemistry", "English", "Logical Reasoning"];
+    const selected_subjects = [];
+    
+    if (!Number.isInteger(page) || page <= 0 || !isString(search))
+        return next(new AppError("Incorrect Query", 400));
 
-    const data = (await pool.query("SELECT subject_name, chapter_name, question, option_a, option_b, option_c, option_d, correct_option, explanation, saved_date::text FROM bookmarks INNER JOIN mcq_bank ON mcq_bank.mcq_id = bookmarks.mcq_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id WHERE student_id=$1 ORDER BY saved_date DESC LIMIT $2 OFFSET $3", [req.body.student_id, SAVED_MCQS_PER_PAGE, (+page-1)*SAVED_MCQS_PER_PAGE])).rows;
+    [biology, physics, chemistry, english, logical_reasoning]
+    .forEach((flag) => {
+        if (isError || !Number.isInteger(flag) || flag < 0 || flag > 1)
+            return isError = true;
+    });
+    if (isError) return next(new AppError("Incorrect Query", 400));
 
+    [biology, physics, chemistry, english, logical_reasoning]
+    .forEach((flag, index) => {
+        if (flag == 1)
+            selected_subjects.push(subjects[index]);
+    });
+    search = search.split(",").map(word => `%${word}%`);
+    const mcqs = (await pool.query(query, [req.user.student_id, SAVED_MCQS_PER_PAGE, (+page-1)*SAVED_MCQS_PER_PAGE, selected_subjects, search])).rows;
+    
     res.status(200).json({
         status: "success",
-        data
+        data: {
+            count: mcqs.length,
+            mcqs
+        }
     });
+};
+
+export const getSavedMCQs = handleAsyncError(async (req, res, next) => {
+    // /saved-mcqs?page=1&biology=1&physics=1&chemistry=1&english=1&logical_reasoning=1&search=umair,anwar
+    const query = "SELECT subject_name, chapter_name, question, option_a, option_b, option_c, option_d, correct_option, explanation, saved_date::text FROM bookmarks INNER JOIN mcq_bank ON mcq_bank.mcq_id = bookmarks.mcq_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id WHERE student_id=$1 AND subjects.subject_name = ANY ($4) AND mcq_bank.question ILIKE ANY($5) ORDER BY saved_date DESC LIMIT $2 OFFSET $3";
+    return await getMCQsForUser(req, res, next, query); 
 });
 
 export const getWrongMCQs = handleAsyncError(async (req, res, next) => {
-    const page = +req.query.page;
-    if (page <= 0 || !Number.isInteger(page)) 
-        return next("Incorrect Page", 400);
-
-    const data = (await pool.query("SELECT subject_name, chapter_name, topic_name, question, option_a, option_b, option_c, option_d, correct_option, selected_option, difficulty, explanation, saved_date::text FROM attempted_mcqs INNER JOIN mcq_bank ON mcq_bank.mcq_id = attempted_mcqs.mcq_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id INNER JOIN topics ON mcq_bank.topic_id = topics.topic_id WHERE student_id=$1 AND attempted_mcqs.selected_option != mcq_bank.correct_option ORDER BY saved_date DESC LIMIT $2 OFFSET $3", [req.body.student_id, SAVED_MCQS_PER_PAGE, (+page-1)*SAVED_MCQS_PER_PAGE])).rows;
-
-    res.status(200).json({
-        status: "success",
-        data
-    });
+    // /wrong-mcqs?page=1&biology=1&physics=1&chemistry=1&english=1&logical_reasoning=1&search=umair,anwar&sort=(newest|oldest|hardest|most_attempted)
+    let order_by;
+    switch (req.query.sort) {
+        case "oldest":
+            order_by = "saved_date ASC"; break;
+        case "most_attempted":
+            order_by = "attempted_mcqs.attempt_count DESC"; break;
+        case "hardest":
+            order_by = "CASE mcq_bank.difficulty WHEN 'Hard' THEN 1 WHEN 'Medium' THEN 2 WHEN 'Easy' THEN 3 END ASC"; break;
+        default:
+            order_by = "saved_date DESC";
+    }
+    const query = `SELECT subject_name, chapter_name, topic_name, question, option_a, option_b, option_c, option_d, correct_option, selected_option, explanation, difficulty, attempted_mcqs.attempt_count, saved_date::text FROM attempted_mcqs INNER JOIN mcq_bank ON mcq_bank.mcq_id = attempted_mcqs.mcq_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id INNER JOIN topics ON mcq_bank.topic_id = topics.topic_id WHERE student_id=$1 AND subjects.subject_name = ANY ($4) AND mcq_bank.question ILIKE ANY($5) AND attempted_mcqs.selected_option != mcq_bank.correct_option ORDER BY ${order_by} LIMIT $2 OFFSET $3`;
+    return await getMCQsForUser(req, res, next, query); 
 });
 
 export const submitQuiz = handleAsyncError(async (req, res, next) => {
-    const {student_id} = req.body;
+/*
+    body: {
+        attempt_count,
+        correct_count,
+        streak,
+        attempts: [ { id, selected_option } ]
+    }
+*/
     const {attempt_count, correct_count, streak} = req.body;
     const mcq_attempts = req.body.attempts;
-    // mcq_attempts: [ { id, selected_option } ]
 
-    let today_activity = (await pool.query(`SELECT attempt_count, correct_count FROM activity WHERE student_id=$1 AND activity_date=$2::DATE`, [student_id, new Date()])).rows;
+    let today_activity = (await pool.query(`SELECT attempt_count, correct_count FROM activity WHERE student_id=$1 AND activity_date=$2::DATE`, [req.user.student_id, new Date()])).rows;
     if (today_activity.length == 0)
-        await pool.query("INSERT INTO activity(student_id, attempt_count, correct_count, streak) VALUES ($1, $2, $3, $4)", [student_id, attempt_count, correct_count, streak]);
+        await pool.query("INSERT INTO activity(student_id, attempt_count, correct_count, streak) VALUES ($1, $2, $3, $4)", [req.user.student_id, attempt_count, correct_count, streak]);
     else
-        await pool.query("UPDATE activity SET attempt_count=$2, correct_count=$3, streak=$4 WHERE student_id=$1 AND activity_date=$5::DATE", [student_id, today_activity[0].attempt_count + attempt_count, today_activity[0].correct_count + correct_count, streak, new Date()]);
+        await pool.query("UPDATE activity SET attempt_count=$2, correct_count=$3, streak=$4 WHERE student_id=$1 AND activity_date=$5::DATE", [req.user.student_id, today_activity[0].attempt_count + attempt_count, today_activity[0].correct_count + correct_count, streak, new Date()]);
 
-    await pool.query("INSERT INTO attempted_mcqs (student_id, mcq_id, selected_option) VALUES " + mcq_attempts.map(mcq => `(${student_id}, ${mcq.id}, '${mcq.selected_option}')`).join(", "));
+    await pool.query("INSERT INTO attempted_mcqs (student_id, mcq_id, selected_option) VALUES " + mcq_attempts.map(mcq => `(${req.user.student_id}, ${mcq.id}, '${mcq.selected_option}')`).join(", "));
 
     res.status(200).json({
         status: "success"

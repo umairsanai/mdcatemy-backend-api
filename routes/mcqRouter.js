@@ -6,7 +6,7 @@ import { AppError, handleAsyncError } from "../error.js";
 
 const router = express.Router();
 
-router.get("/distribution-per-topic", getMcqDistributionPerTopic);
+router.get("/distribution-per-topic", protect, getMcqDistributionPerTopic);
 router.get("/quiz", protect, generateQuiz);
 
 export default router;

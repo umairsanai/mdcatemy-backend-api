@@ -2,7 +2,7 @@ import pool from "../database.js";
 import { AppError, handleAsyncError } from "../error.js";
 
 export const getMcqDistributionPerTopic = handleAsyncError(async (req, res, next) => {
-    const data = (await pool.query("SELECT topic_name, COUNT(*)::INT FROM mcq_bank INNER JOIN topics ON mcq_bank.topic_id = topics.topic_id GROUP BY topics.topic_name")).rows;
+    const data = (await pool.query("SELECT topic_name, COUNT(mcq_bank.mcq_id)::INT FROM mcq_bank RIGHT JOIN topics ON mcq_bank.topic_id = topics.topic_id GROUP BY topics.topic_name")).rows;
 
     res.status(200).json({
         status: "success",
@@ -11,6 +11,7 @@ export const getMcqDistributionPerTopic = handleAsyncError(async (req, res, next
 });
 
 export const generateQuiz = handleAsyncError(async (req, res, next) => {
+    // /quiz?easy=10&medium=5&hard=3
     let quiz = {
         count: {
             easy: 0,
