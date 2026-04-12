@@ -16,19 +16,26 @@ CREATE TABLE topics(
     CONSTRAINT fkey_topic_subject FOREIGN KEY (subject_id) REFERENCES subjects(subject_id) ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fkey_topic_chapter FOREIGN KEY (chapter_id) REFERENCES chapters(chapter_id) ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE TABLE student(
-    student_id SERIAL PRIMARY KEY,
+
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
+    age INT NOT NULL CHECK(age > 0),
     email VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(100) NOT NULL,
-    age INT NOT NULL,
     gender CHAR(1) NOT NULL,
     role VARCHAR(20) NOT NULL DEFAULT 'student',
+    password VARCHAR(100) NOT NULL,
+    password_changed_at BIGINT DEFAULT 0 CHECK(password_changed_at >= 0),
+    created_at DATE NOT NULL DEFAULT CURRENT_DATE
+);
+
+CREATE TABLE student(
+    student_id INT PRIMARY KEY,
     academic_status VARCHAR(50) NOT NULL DEFAULT 'Fresher',
-    created_at DATE NOT NULL DEFAULT CURRENT_DATE, 
     streak INT NOT NULL DEFAULT 0, 
+
     CONSTRAINT streak_non_negative CHECK(streak >= 0),
-    CONSTRAINT age_positive CHECK(age > 0)
+    CONSTRAINT fkey_student_user FOREIGN KEY (student_id) REFERENCES user(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
 );
 
 CREATE TABLE mcq_bank(

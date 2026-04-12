@@ -3,6 +3,10 @@
 # *.log
 # npm-debug.log*
 
+# extra files to ignore.
+admin-register-script.js
+queries.sql
+
 # Dependency directories
 node_modules/
 

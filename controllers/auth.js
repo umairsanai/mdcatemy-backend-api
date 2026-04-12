@@ -3,13 +3,13 @@ import pool from "../database.js";
 import argon from "argon2";
 import jwt from "jsonwebtoken";
 
-const signJwtToken = (email) => {
-    return jwt.sign({ email }, process.env.JWT_SIGN_SECRET, {
+const signJwtToken = (email, role) => {
+    return jwt.sign({ email, role }, process.env.JWT_SIGN_SECRET, {
         expiresIn: "7 days"
     });
 }
-const signTokenAndSetInCookie = (email, res) => {
-    res.cookie("mdcatemy-login-token", signJwtToken(email), {
+const signTokenAndSetInCookie = (email, role, res) => {
+    res.cookie("mdcatemy-login-token", signJwtToken(email, role), {
         httpOnly: true,
         sameSite: "strict",
         path: "/api",
@@ -40,16 +40,21 @@ const verifyPassword = async (actual_password, input_password) => {
 export const protect = handleAsyncError(async (req, res, next) => {
     const token = req.cookies["mdcatemy-login-token"];
     if (!token) 
-        return next("You're not logged in!", 401);
+        return next(new AppError("You're not logged in!", 401));
     const payload = jwt.verify(token, process.env.JWT_SIGN_SECRET);
-    const user = (await pool.query("SELECT student_id, name, email, streak, password_changed_at FROM student WHERE email=$1", [payload.email])).rows[0];
+    let user = undefined;
+
+    if (payload.role !== "student")
+        user = (await pool.query("SELECT user_id, name, email, role, password_changed_at FROM users WHERE email=$1", [payload.email])).rows[0];
+    else
+        user = (await pool.query("SELECT student_id, name, email, role, streak, password_changed_at FROM users INNER JOIN students ON users.user_id=students.student_id WHERE email=$1", [payload.email])).rows[0];
 
     if (!user)
-        return next(new AppError("The user has been deleted", 404));
+        return next(new AppError("This user doesn't exist", 404));
     if (payload.exp*1000 <= user.password_changed_at)
         return next(new AppError("You have changed your password. Please log in again!", 401));
     
-    req.user = user;       
+    req.user = user;
     next();
 });
 
@@ -69,9 +74,13 @@ export const signup = handleAsyncError(async (req, res, next) => {
     academic_status = academic_status ?? "Fresher";
     password = await hashPassword(password);
 
-    await pool.query("INSERT INTO student (name, email, password, age, gender, academic_status) VALUES ($1, $2, $3, $4, $5, $6)", [name, email, password, age, gender, academic_status]);
+    await pool.query("INSERT INTO users (name, email, password, age, gender) VALUES ($1, $2, $3, $4, $5)", [name, email, password, age, gender]);
+
+    const student_id = (await pool.query("SELECT user_id FROM users WHERE email=$1", [email])).rows[0].user_id;
+    await pool.query("INSERT INTO students (student_id, academic_status) VALUES ($1, $2)", [student_id, academic_status]);
     
-    signTokenAndSetInCookie(email, res);
+    // Hardcoading (role: student) because, for admins, this functionality isn't yet implemented.
+    signTokenAndSetInCookie(email, "student", res);
 
     res.status(200).json({
         status: "success",
@@ -80,17 +89,17 @@ export const signup = handleAsyncError(async (req, res, next) => {
 });
 
 export const login = handleAsyncError(async (req, res, next) => {
-    const {email: input_email, password: input_password} = req.body;
+    const {email: input_email, password: input_password, role} = req.body;
 
     if (!input_email || !input_password) 
-        return next("User not found!", 400);
+        return next(new AppError("User not found!", 400));
 
-    const user = (await pool.query("SELECT email, password FROM student WHERE email=$1", [input_email])).rows[0];
+    const user = (await pool.query("SELECT email, password, role FROM users WHERE email=$1", [input_email])).rows[0];
 
-    if (!user || !verifyPassword(user.password, input_password)) 
-        return next(new AppError("Incorrect email or password!", 401));
+    if (!user || !verifyPassword(user.password, input_password) || user.role != role)
+        return next(new AppError("Incorrect email or password or role!", 401));
 
-    signTokenAndSetInCookie(user.email, res);
+    signTokenAndSetInCookie(user.email, user.role, res);
     
     res.status(200).json({
         status: "success",

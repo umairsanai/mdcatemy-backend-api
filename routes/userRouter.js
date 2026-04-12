@@ -1,13 +1,13 @@
 import express from "express";
-import { signup, login, logout, protect } from "../controllers/auth.js";
+import { signup, login, logout, protect, restrictTo } from "../controllers/auth.js";
 import { getDashboardStats, getSavedMCQs, getWrongMCQs, submitQuiz } from "../controllers/user.js";
 
 const router = express.Router();
 
-router.get("/dashboard-stats", protect, getDashboardStats);
-router.get("/saved-mcqs", protect, getSavedMCQs);
-router.get("/wrong-mcqs", protect, getWrongMCQs);
-router.post("/submit-quiz", protect, submitQuiz);
+router.get("/dashboard-stats", protect, restrictTo("student"), getDashboardStats);
+router.get("/saved-mcqs", protect, restrictTo("student"), getSavedMCQs);
+router.get("/wrong-mcqs", protect, restrictTo("student"), getWrongMCQs);
+router.post("/submit-quiz", protect, restrictTo("student"), submitQuiz);
 
 router.get("/signup", signup);
 router.get("/login", login);
