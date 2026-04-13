@@ -8,6 +8,7 @@ const signJwtToken = (email, role) => {
         expiresIn: "7 days"
     });
 }
+
 const signTokenAndSetInCookie = (email, role, res) => {
     res.cookie("mdcatemy-login-token", signJwtToken(email, role), {
         httpOnly: true,
@@ -30,12 +31,21 @@ const hashPassword = async (password) => {
         return err;
     }
 }
+
 const verifyPassword = async (actual_password, input_password) => {
     return await argon.verify(actual_password, input_password, {
         secret: Buffer.from(process.env.PASSWORD_HASH_SECRET)
     });
 }
 
+
+export function restrictTo(...roles) {
+    return function(req, res, next) {
+        if (roles.includes(req.user.role))
+            return next();
+        next(new AppError("You are not authorized for this service!", 401));
+    }
+}
 
 export const protect = handleAsyncError(async (req, res, next) => {
     const token = req.cookies["mdcatemy-login-token"];
@@ -47,24 +57,19 @@ export const protect = handleAsyncError(async (req, res, next) => {
     if (payload.role !== "student")
         user = (await pool.query("SELECT user_id, name, email, role, password_changed_at FROM users WHERE email=$1", [payload.email])).rows[0];
     else
-        user = (await pool.query("SELECT student_id, name, email, role, streak, password_changed_at FROM users INNER JOIN students ON users.user_id=students.student_id WHERE email=$1", [payload.email])).rows[0];
+        user = (await pool.query("SELECT student_id, name, email, role, streak, total_mistakes, password_changed_at FROM users INNER JOIN students ON users.user_id=students.student_id WHERE email=$1", [payload.email])).rows[0];
+
+    console.log(payload.email);
 
     if (!user)
         return next(new AppError("This user doesn't exist", 404));
-    if (payload.exp*1000 <= user.password_changed_at)
+    if (payload.iat*1000 <= user.password_changed_at)
         return next(new AppError("You have changed your password. Please log in again!", 401));
     
     req.user = user;
     next();
 });
 
-export function restrictTo(...roles) {
-    return function(req, res, next) {
-        if (roles.includes(req.user.role))
-            return next();
-        next(new AppError("You are not authorized for this service!", 401));
-    }
-}
 export const signup = handleAsyncError(async (req, res, next) => {
     let {name, email, password, age, gender, academic_status} = req.body;
 
@@ -91,12 +96,12 @@ export const signup = handleAsyncError(async (req, res, next) => {
 export const login = handleAsyncError(async (req, res, next) => {
     const {email: input_email, password: input_password, role} = req.body;
 
-    if (!input_email || !input_password) 
-        return next(new AppError("User not found!", 400));
+    if (!input_email || !input_password || !role) 
+        return next(new AppError("Please provide complete credentials", 400));
 
     const user = (await pool.query("SELECT email, password, role FROM users WHERE email=$1", [input_email])).rows[0];
 
-    if (!user || !verifyPassword(user.password, input_password) || user.role != role)
+    if (!user || !await verifyPassword(user.password, input_password) || user.role != role)
         return next(new AppError("Incorrect email or password or role!", 401));
 
     signTokenAndSetInCookie(user.email, user.role, res);

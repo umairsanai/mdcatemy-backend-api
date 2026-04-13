@@ -4,7 +4,7 @@
 # npm-debug.log*
 
 # extra files to ignore.
-admin-register-script.js
+scripts/
 queries.sql
 
 # Dependency directories

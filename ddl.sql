@@ -33,8 +33,10 @@ CREATE TABLE student(
     student_id INT PRIMARY KEY,
     academic_status VARCHAR(50) NOT NULL DEFAULT 'Fresher',
     streak INT NOT NULL DEFAULT 0, 
+    total_mistakes INT NOT NULL DEFAULT 0,
 
     CONSTRAINT streak_non_negative CHECK(streak >= 0),
+    CONSTRAINT total_mistakes_non_negative CHECK(total_mistakes >= 0),
     CONSTRAINT fkey_student_user FOREIGN KEY (student_id) REFERENCES user(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
 );
 

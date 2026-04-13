@@ -37,12 +37,20 @@ export const generateQuiz = handleAsyncError(async (req, res, next) => {
     if (isError || !req.body.topic_ids || !Array.isArray(req.body.topic_ids)) 
         return next(new AppError("Incorrect Query", 400));
 
-    if (easy)
-        quiz.mcqs.easy = (await pool.query("SELECT mcq_id, topic_id, question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id WHERE difficulty='Easy' AND mcq_bank.topic_id = ANY($2) ORDER BY RANDOM() LIMIT $1", [easy, req.body.topic_ids])).rows;
-    if (medium)
-        quiz.mcqs.medium = (await pool.query("SELECT mcq_id, topic_id, question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id WHERE difficulty='Medium' AND mcq_bank.topic_id = ANY($2) ORDER BY RANDOM() LIMIT $1", [medium, req.body.topic_ids])).rows;
-    if (hard)
-        quiz.mcqs.hard = (await pool.query("SELECT mcq_id, topic_id, question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id WHERE difficulty='Hard' AND mcq_bank.topic_id = ANY($2)  ORDER BY RANDOM() LIMIT $1", [hard, req.body.topic_ids])).rows;
+    let query = "SELECT mcq_bank.mcq_id, topic_id, question, option_a, option_b, option_c, option_d, correct_option, explanation, difficulty, subject_name, chapter_name, (CASE WHEN bookmarks.mcq_id IS NOT NULL THEN 1 ELSE 0 END) AS is_bookmarked FROM mcq_bank INNER JOIN subjects ON subjects.subject_id = mcq_bank.subject_id INNER JOIN chapters ON chapters.chapter_id = mcq_bank.chapter_id LEFT JOIN bookmarks ON bookmarks.mcq_id=mcq_bank.mcq_id AND bookmarks.student_id=$1 WHERE difficulty='<<diff>>' AND topic_id = ANY($3) ORDER BY RANDOM() LIMIT $2";
+
+    if (easy) {
+        query = query.replace("<<diff>>", "Easy")
+        quiz.mcqs.easy = (await pool.query(query, [req.user.student_id ?? -1, easy, req.body.topic_ids])).rows;
+    }
+    if (medium) {
+        query = query.replace("Easy", "Medium")
+        quiz.mcqs.medium = (await pool.query(query, [req.user.student_id ?? -1, medium, req.body.topic_ids])).rows;
+    }
+    if (hard) {
+        query = query.replace("<<diff>>", "Hard")
+        quiz.mcqs.hard = (await pool.query(query, [req.user.student_id ?? -1, hard, req.body.topic_ids])).rows;
+    }
 
     quiz.count.easy = quiz.mcqs.easy.length;
     quiz.count.medium = quiz.mcqs.medium.length;

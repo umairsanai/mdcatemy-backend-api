@@ -8,12 +8,14 @@ const MILLISECONDS_IN_DAY = 86400000;
 export const getDashboardStats = handleAsyncError(async (req, res, next) => {
 
     let user = {
-        name: "",
-        email: "",
+        name: req.user.name,
+        email: req.user.email,
         streak: 0,
         today_attempt_count: 0,
         total_attempt_count: 0,
         total_correct_count: 0,
+        total_mistakes: req.user.total_mistakes,
+        pending_mistakes: 0,
         biology: { attempt: 0, correct: 0 },
         chemistry: { attempt: 0, correct: 0 },
         physics: { attempt: 0, correct: 0 },
@@ -21,24 +23,22 @@ export const getDashboardStats = handleAsyncError(async (req, res, next) => {
         logical_reasoning: { attempt: 0, correct: 0 }
     };
     
-    user.name = req.user.name;
-    user.email = req.user.email;
 
     const yesterday = new Date(Date.now()-1*MILLISECONDS_IN_DAY).toISOString().split('T')[0];
-    let yesterday_activity = await pool.query(`SELECT streak, activity_date::text FROM activity WHERE student_id=$1 AND activity_date=$2::DATE`, [req.user.student_id, yesterday]);
+    let yesterday_activity = (await pool.query(`SELECT streak, activity_date::text FROM activity WHERE student_id=$1 AND activity_date=$2::DATE`, [req.user.student_id, yesterday])).rows[0];
 
-    if (yesterday_activity.rows.length == 0 && req.user.streak != 0) {
+    if (!yesterday_activity && req.user.streak != 0) {
         await pool.query("UPDATE students SET streak=0 WHERE student_id=$1", [req.user.student_id]);
-    } else if (yesterday_activity.rows.length && +yesterday_activity.rows[0].streak == req.user.streak) {
+    } else if (yesterday_activity && +yesterday_activity.streak === req.user.streak) {
         user.streak = req.user.streak+1;
         await pool.query("UPDATE students SET streak=$1 WHERE student_id=$2", [req.user.streak+1, req.user.student_id]);
-    } else if (yesterday_activity.rows.length) {
+    } else if (yesterday_activity) {
         user.streak = req.user.streak;
     }
 
-    const today_acitivity = await pool.query(`SELECT attempt_count FROM activity WHERE student_id=$1 AND activity_date=$2::DATE`, [req.user.student_id, new Date()]);
-    if (today_acitivity.rows.length != 0) {
-        user.today_attempt_count = +today_acitivity.rows[0].attempt_count;
+    const today_acitivity = (await pool.query(`SELECT attempt_count FROM activity WHERE student_id=$1 AND activity_date=$2::DATE`, [req.user.student_id, new Date()])).rows[0];
+    if (today_acitivity) {
+        user.today_attempt_count = +today_acitivity.attempt_count;
     }
 
     const subject_wise_mcq_counts = (await pool.query(`SELECT subjects.subject_name, SUM(1) AS attempt_count, SUM(CASE WHEN attempted_mcqs.selected_option=mcq_bank.correct_option THEN 1 ELSE 0 END) AS correct_count FROM attempted_mcqs INNER JOIN mcq_bank ON attempted_mcqs.mcq_id=mcq_bank.mcq_id INNER JOIN subjects ON subjects.subject_id=mcq_bank.subject_id WHERE student_id=$1 GROUP BY mcq_bank.subject_id, subjects.subject_name`, [req.user.student_id])).rows;
@@ -49,6 +49,7 @@ export const getDashboardStats = handleAsyncError(async (req, res, next) => {
 
     user.total_correct_count = user.biology.correct + user.chemistry.correct + user.physics.correct + user.english.correct + user.logical_reasoning.correct;
     user.total_attempt_count = user.biology.attempt + user.chemistry.attempt + user.physics.attempt + user.english.attempt + user.logical_reasoning.attempt;
+        user.pending_mistakes = user.total_attempt_count - user.total_correct_count;
     user.accuracy = !user.total_attempt_count ? 0 : Math.round((user.total_correct_count/user.total_attempt_count)*100);
 
     user.activity = (await pool.query(`SELECT attempt_count, correct_count, activity_date::text FROM activity WHERE student_id=$1 AND activity_date >= $2::DATE`, [req.user.student_id, new Date(Date.now()-7*MILLISECONDS_IN_DAY)])).rows;
@@ -98,7 +99,7 @@ const getMCQsForUser = async (req, res, next, query) => {
 
 export const getSavedMCQs = handleAsyncError(async (req, res, next) => {
     // /saved-mcqs?page=1&biology=1&physics=1&chemistry=1&english=1&logical_reasoning=1&search=umair,anwar
-    const query = "SELECT subject_name, chapter_name, question, option_a, option_b, option_c, option_d, correct_option, explanation, saved_date::text FROM bookmarks INNER JOIN mcq_bank ON mcq_bank.mcq_id = bookmarks.mcq_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id WHERE student_id=$1 AND subjects.subject_name = ANY ($4) AND mcq_bank.question ILIKE ANY($5) ORDER BY saved_date DESC LIMIT $2 OFFSET $3";
+    const query = "SELECT mcq_bank.mcq_id, subject_name, chapter_name, question, option_a, option_b, option_c, option_d, correct_option, explanation, saved_date::text FROM bookmarks INNER JOIN mcq_bank ON mcq_bank.mcq_id = bookmarks.mcq_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id WHERE student_id=$1 AND subjects.subject_name = ANY ($4) AND mcq_bank.question ILIKE ANY($5) ORDER BY saved_date DESC LIMIT $2 OFFSET $3";
     return await getMCQsForUser(req, res, next, query); 
 });
 
@@ -115,7 +116,7 @@ export const getWrongMCQs = handleAsyncError(async (req, res, next) => {
         default:
             order_by = "saved_date DESC";
     }
-    const query = `SELECT subject_name, chapter_name, topic_name, question, option_a, option_b, option_c, option_d, correct_option, selected_option, explanation, difficulty, attempted_mcqs.attempt_count, saved_date::text FROM attempted_mcqs INNER JOIN mcq_bank ON mcq_bank.mcq_id = attempted_mcqs.mcq_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id INNER JOIN topics ON mcq_bank.topic_id = topics.topic_id WHERE student_id=$1 AND subjects.subject_name = ANY ($4) AND mcq_bank.question ILIKE ANY($5) AND attempted_mcqs.selected_option != mcq_bank.correct_option ORDER BY ${order_by} LIMIT $2 OFFSET $3`;
+    const query = `SELECT mcq_bank.mcq_id, subject_name, chapter_name, topic_name, question, option_a, option_b, option_c, option_d, correct_option, selected_option, explanation, difficulty, attempted_mcqs.attempt_count, saved_date::text FROM attempted_mcqs INNER JOIN mcq_bank ON mcq_bank.mcq_id = attempted_mcqs.mcq_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id INNER JOIN topics ON mcq_bank.topic_id = topics.topic_id WHERE student_id=$1 AND subjects.subject_name = ANY ($4) AND mcq_bank.question ILIKE ANY($5) AND attempted_mcqs.selected_option != mcq_bank.correct_option ORDER BY ${order_by} LIMIT $2 OFFSET $3`;
     return await getMCQsForUser(req, res, next, query); 
 });
 
@@ -138,6 +139,28 @@ export const submitQuiz = handleAsyncError(async (req, res, next) => {
         await pool.query("UPDATE activity SET attempt_count=$2, correct_count=$3, streak=$4 WHERE student_id=$1 AND activity_date=$5::DATE", [req.user.student_id, today_activity[0].attempt_count + attempt_count, today_activity[0].correct_count + correct_count, streak, new Date()]);
 
     await pool.query("INSERT INTO attempted_mcqs (student_id, mcq_id, selected_option) VALUES " + mcq_attempts.map(mcq => `(${req.user.student_id}, ${mcq.id}, '${mcq.selected_option}')`).join(", "));
+
+    res.status(200).json({
+        status: "success"
+    });
+});
+
+export const deleteSavedMCQ = handleAsyncError(async (req, res, next) => {
+    if (!req.params.mcq_id || !Number.isInteger(+req.params.mcq_id)) 
+        return next(new AppError("Incorrect Query", 400));
+
+    await pool.query("DELETE FROM bookmarks WHERE student_id=$1 AND mcq_id=$2", [+req.user.student_id, +req.params.mcq_id]);
+
+    res.status(200).json({
+        status: "success"
+    });
+});
+
+export const deleteWrongMCQ = handleAsyncError(async (req, res, next) => {
+    if (!req.params.mcq_id || !Number.isInteger(+req.params.mcq_id)) 
+        return next(new AppError("Incorrect Query", 400));
+
+    await pool.query("UPDATE attempted_mcqs SET selected_option=(SELECT correct_option FROM mcq_bank WHERE mcq_id=$2) WHERE student_id=$1 AND mcq_id=$2", [+req.user.student_id, +req.params.mcq_id]);
 
     res.status(200).json({
         status: "success"
