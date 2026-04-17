@@ -21,7 +21,9 @@
     "hpp-clean": "^1.0.4",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
+    "multer": "^2.1.1",
     "pg": "^8.20.0",
-    "pg-cursor": "^2.19.0"
+    "pg-cursor": "^2.19.0",
+    "read-excel-file": "^8.0.3"
   }
 }

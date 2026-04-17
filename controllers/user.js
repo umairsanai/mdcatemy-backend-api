@@ -14,25 +14,26 @@ export const getDashboardStats = handleAsyncError(async (req, res, next) => {
         today_attempt_count: 0,
         total_attempt_count: 0,
         total_correct_count: 0,
+        saved_mcqs_count: 0,
         total_mistakes: req.user.total_mistakes,
         pending_mistakes: 0,
-        biology: { attempt: 0, correct: 0 },
-        chemistry: { attempt: 0, correct: 0 },
-        physics: { attempt: 0, correct: 0 },
-        english: { attempt: 0, correct: 0 },
-        logical_reasoning: { attempt: 0, correct: 0 }
+        biology: { attempt: 0, correct: 0, bookmarks: 0 },
+        chemistry: { attempt: 0, correct: 0, bookmarks: 0 },
+        physics: { attempt: 0, correct: 0, bookmarks: 0 },
+        english: { attempt: 0, correct: 0, bookmarks: 0 },
+        logical_reasoning: { attempt: 0, correct: 0, bookmarks: 0 }
     };
     
 
     const yesterday = new Date(Date.now()-1*MILLISECONDS_IN_DAY).toISOString().split('T')[0];
-    let yesterday_activity = (await pool.query(`SELECT streak, activity_date::text FROM activity WHERE student_id=$1 AND activity_date=$2::DATE`, [req.user.student_id, yesterday])).rows[0];
+    let yesterday_activity = (await pool.query(`SELECT streak, attempt_count, activity_date::text FROM activity WHERE student_id=$1 AND activity_date=$2::DATE`, [req.user.student_id, yesterday])).rows[0];
 
-    if (!yesterday_activity && req.user.streak != 0) {
+    if ((!yesterday_activity || yesterday_activity.attempt_count < 50) && req.user.streak != 0) {
         await pool.query("UPDATE students SET streak=0 WHERE student_id=$1", [req.user.student_id]);
-    } else if (yesterday_activity && +yesterday_activity.streak === req.user.streak) {
+    } else if (yesterday_activity && yesterday_activity.attempt_count >= 50 && +yesterday_activity.streak === req.user.streak) {
         user.streak = req.user.streak+1;
         await pool.query("UPDATE students SET streak=$1 WHERE student_id=$2", [req.user.streak+1, req.user.student_id]);
-    } else if (yesterday_activity) {
+    } else if (yesterday_activity && yesterday_activity.attempt_count >= 50) {
         user.streak = req.user.streak;
     }
 
@@ -42,14 +43,18 @@ export const getDashboardStats = handleAsyncError(async (req, res, next) => {
     }
 
     const subject_wise_mcq_counts = (await pool.query(`SELECT subjects.subject_name, SUM(1) AS attempt_count, SUM(CASE WHEN attempted_mcqs.selected_option=mcq_bank.correct_option THEN 1 ELSE 0 END) AS correct_count FROM attempted_mcqs INNER JOIN mcq_bank ON attempted_mcqs.mcq_id=mcq_bank.mcq_id INNER JOIN subjects ON subjects.subject_id=mcq_bank.subject_id WHERE student_id=$1 GROUP BY mcq_bank.subject_id, subjects.subject_name`, [req.user.student_id])).rows;
+    const subject_wise_saved_mcq_counts = (await pool.query("SELECT subjects.subject_name, COUNT(subjects.subject_name)::INT AS count FROM bookmarks INNER JOIN mcq_bank ON bookmarks.mcq_id=mcq_bank.mcq_id INNER JOIN subjects ON subjects.subject_id=mcq_bank.subject_id WHERE student_id=$1 GROUP BY subjects.subject_name", [req.user.student_id])).rows;
     subject_wise_mcq_counts.forEach(elem => {
         user[elem.subject_name.toLowerCase()].attempt = +elem.attempt_count;
         user[elem.subject_name.toLowerCase()].correct = +elem.correct_count;
     });
+    subject_wise_saved_mcq_counts.forEach((elem) => {
+        user[elem.subject_name.toLowerCase()].bookmarks = +elem.count;        
+    });
 
     user.total_correct_count = user.biology.correct + user.chemistry.correct + user.physics.correct + user.english.correct + user.logical_reasoning.correct;
     user.total_attempt_count = user.biology.attempt + user.chemistry.attempt + user.physics.attempt + user.english.attempt + user.logical_reasoning.attempt;
-        user.pending_mistakes = user.total_attempt_count - user.total_correct_count;
+    user.pending_mistakes = user.total_attempt_count - user.total_correct_count;
     user.accuracy = !user.total_attempt_count ? 0 : Math.round((user.total_correct_count/user.total_attempt_count)*100);
 
     user.activity = (await pool.query(`SELECT attempt_count, correct_count, activity_date::text FROM activity WHERE student_id=$1 AND activity_date >= $2::DATE`, [req.user.student_id, new Date(Date.now()-7*MILLISECONDS_IN_DAY)])).rows;
@@ -118,31 +123,6 @@ export const getWrongMCQs = handleAsyncError(async (req, res, next) => {
     }
     const query = `SELECT mcq_bank.mcq_id, subject_name, chapter_name, topic_name, question, option_a, option_b, option_c, option_d, correct_option, selected_option, explanation, difficulty, attempted_mcqs.attempt_count, saved_date::text FROM attempted_mcqs INNER JOIN mcq_bank ON mcq_bank.mcq_id = attempted_mcqs.mcq_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id INNER JOIN topics ON mcq_bank.topic_id = topics.topic_id WHERE student_id=$1 AND subjects.subject_name = ANY ($4) AND mcq_bank.question ILIKE ANY($5) AND attempted_mcqs.selected_option != mcq_bank.correct_option ORDER BY ${order_by} LIMIT $2 OFFSET $3`;
     return await getMCQsForUser(req, res, next, query); 
-});
-
-export const submitQuiz = handleAsyncError(async (req, res, next) => {
-/*
-    body: {
-        attempt_count,
-        correct_count,
-        streak,
-        attempts: [ { id, selected_option } ]
-    }
-*/
-    const {attempt_count, correct_count, streak} = req.body;
-    const mcq_attempts = req.body.attempts;
-
-    let today_activity = (await pool.query(`SELECT attempt_count, correct_count FROM activity WHERE student_id=$1 AND activity_date=$2::DATE`, [req.user.student_id, new Date()])).rows;
-    if (today_activity.length == 0)
-        await pool.query("INSERT INTO activity(student_id, attempt_count, correct_count, streak) VALUES ($1, $2, $3, $4)", [req.user.student_id, attempt_count, correct_count, streak]);
-    else
-        await pool.query("UPDATE activity SET attempt_count=$2, correct_count=$3, streak=$4 WHERE student_id=$1 AND activity_date=$5::DATE", [req.user.student_id, today_activity[0].attempt_count + attempt_count, today_activity[0].correct_count + correct_count, streak, new Date()]);
-
-    await pool.query("INSERT INTO attempted_mcqs (student_id, mcq_id, selected_option) VALUES " + mcq_attempts.map(mcq => `(${req.user.student_id}, ${mcq.id}, '${mcq.selected_option}')`).join(", "));
-
-    res.status(200).json({
-        status: "success"
-    });
 });
 
 export const deleteSavedMCQ = handleAsyncError(async (req, res, next) => {

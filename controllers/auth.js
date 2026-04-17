@@ -59,8 +59,6 @@ export const protect = handleAsyncError(async (req, res, next) => {
     else
         user = (await pool.query("SELECT student_id, name, email, role, streak, total_mistakes, password_changed_at FROM users INNER JOIN students ON users.user_id=students.student_id WHERE email=$1", [payload.email])).rows[0];
 
-    console.log(payload.email);
-
     if (!user)
         return next(new AppError("This user doesn't exist", 404));
     if (payload.iat*1000 <= user.password_changed_at)
