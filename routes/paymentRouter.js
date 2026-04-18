@@ -7,7 +7,7 @@ import { AppError } from "../error.js";
 const router = express.Router();
 
 // Student functions.
-router.get("/status", getPaymentStatus);
+router.get("/status", protect, getPaymentStatus);
 
 
 // Admin functions.

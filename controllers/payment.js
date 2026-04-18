@@ -35,20 +35,9 @@ export const getPendingPaymentReceipt = (req, res, next) => {
     res.sendFile(`${req.params.email}.jpg`, {root: "receipts"}); 
 };
 
-export const getPaymentStatus = handleAsyncError(async (req, res, next) => {
-    const token = req.cookies["mdcatemy-login-token"];
-
-    if (!token) 
-        return next(new AppError("You're not logged in!", 401));
-
-    const payload = jwt.verify(token, process.env.JWT_SIGN_SECRET);
-    let user = (await pool.query("SELECT email, payment_status FROM users INNER JOIN students ON students.student_id=users.user_id WHERE email=$1", [payload.email])).rows[0];
-
-    if (!user)
-        return next(new AppError("This user doesn't exist", 404));
-    
+export const getPaymentStatus = (req, res, next) => {    
     res.status(200).json({
         status: "success",
-        payment_status: user.payment_status
+        payment_status: req.user.payment_status
     });
-});
+};
