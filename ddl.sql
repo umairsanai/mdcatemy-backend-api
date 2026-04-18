@@ -137,6 +137,15 @@ CREATE TABLE test_enrollments(
     CONSTRAINT fkey_testenrollments_students FOREIGN KEY (student_id) REFERENCES students(student_id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+CREATE TABLE test_topics (
+    test_id INT NOT NULL,
+    topic_id INT NOT NULL,
+
+    CONSTRAINT pkey_testtopics PRIMARY KEY (test_id, topic_id),
+    CONSTRAINT fkey_testtopics_tests FOREIGN KEY (test_id) REFERENCES tests(test_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fkey_testtopics_topics FOREIGN KEY (topic_id) REFERENCES topics(topic_id) ON UPDATE CASCADE ON DELETE CASCADE    
+);
+
 CREATE TABLE test_mcqs(
     test_id INT NOT NULL,
     mcq_id INT NOT NULL,
