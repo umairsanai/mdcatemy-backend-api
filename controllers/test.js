@@ -30,14 +30,7 @@ export const getAllTestStats = handleAsyncError(async (req, res, next) => {
 });
 
 export const getTestInfo = handleAsyncError(async (req, res, next) => {    
-    const data = (await pool.query(`SELECT DISTINCT subject_name, chapter_name, topic_name
-        FROM test_mcqs 
-        INNER JOIN mcq_bank ON test_mcqs.mcq_id = mcq_bank.mcq_id
-        INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id
-        INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id
-        INNER JOIN topics ON mcq_bank.topic_id = topics.topic_id
-        WHERE test_id = (SELECT test_id FROM tests WHERE slug=$1);
-    `, [req.params.slug])).rows;
+    const data = (await pool.query("SELECT DISTINCT subject_name, chapter_name, topic_name FROM test_mcqs INNER JOIN mcq_bank ON test_mcqs.mcq_id = mcq_bank.mcq_id INNER JOIN chapters ON mcq_bank.chapter_id = chapters.chapter_id INNER JOIN subjects ON mcq_bank.subject_id = subjects.subject_id INNER JOIN topics ON mcq_bank.topic_id = topics.topic_id WHERE test_id = (SELECT test_id FROM tests WHERE slug=$1)", [req.params.slug])).rows;
 
     const subjects = ["Biology", "Chemsitry", "Physics", "Logical Reasoning", "English"]
     const syllabus = [];    

@@ -31,12 +31,15 @@ CREATE TABLE users (
     created_at DATE NOT NULL DEFAULT CURRENT_DATE
 );
 
+CREATE TYPE PAYMENT_STATUS AS ENUM ('PENDING', 'VERIFIED', 'REJECTED');
+
 CREATE TABLE students (
     student_id INT PRIMARY KEY,
     academic_status VARCHAR(50) NOT NULL DEFAULT 'Fresher',
     streak INT NOT NULL DEFAULT 0, 
     total_mistakes INT NOT NULL DEFAULT 0,
     new_student BOOLEAN NOT NULL DEFAULT 1,
+    payment_status PAYMENT_STATUS NOT NULL DEFAULT 'PENDING',
 
     CONSTRAINT streak_non_negative CHECK(streak >= 0),
     CONSTRAINT total_mistakes_non_negative CHECK(total_mistakes >= 0),

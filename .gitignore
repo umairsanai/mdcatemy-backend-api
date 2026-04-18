@@ -5,6 +5,7 @@
 
 # extra files to ignore.
 scripts/
+receipts/
 queries.sql
 
 # Dependency directories

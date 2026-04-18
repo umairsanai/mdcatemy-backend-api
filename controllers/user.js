@@ -146,3 +146,11 @@ export const deleteWrongMCQ = handleAsyncError(async (req, res, next) => {
         status: "success"
     });
 });
+
+export const uploadPaymentReceipt = handleAsyncError(async (req, res, next) => {
+    (await pool.query("UPDATE students SET payment_status='PENDING' WHERE student_id=$1", [req.user.student_id]));
+    res.status(200).json({
+        status: "success",
+        payment_status: "PENDING"
+    });
+});
